@@ -25,7 +25,9 @@ export default class App {
   joiningCode = new UsableField('');
 
   socket?: RtcPairSocket;
-  msgQueue = new AsyncQueue<unknown>();
+  // Separate queues for application JSON messages and MPC binary messages
+  dataQueue = new AsyncQueue<string>();
+  mpcQueue = new AsyncQueue<Uint8Array>();
 
   static generateJoiningCode() {
     // 128 bits of entropy
@@ -55,9 +57,13 @@ export default class App {
     this.socket = socket;
 
     socket.on('message', (msg: unknown) => {
-      // Using a message queue instead of passing messages directly to the MPC
-      // protocol ensures that we don't miss anything sent before we begin.
-      this.msgQueue.push(msg);
+      if (typeof msg === 'string') {
+        this.dataQueue.push(msg);
+      } else if (msg instanceof Uint8Array) {
+        this.mpcQueue.push(msg);
+      } else {
+        console.warn('Unknown message type received', msg);
+      }
     });
 
     await new Promise<void>((resolve, reject) => {
@@ -70,23 +76,28 @@ export default class App {
 
   async sendData(data: any) {
     if (!this.socket) throw new Error('No connection');
-    this.socket.send(JSON.stringify({ type: 'DATA', payload: data }, jsonReplacer));
+    this.socket.send(
+      JSON.stringify({ type: 'DATA', payload: data }, jsonReplacer),
+    );
   }
 
   onData(callback: (data: any) => void) {
-    this.msgQueue.stream((msg: unknown) => {
-      if (typeof msg === 'string') {
-        try {
-          const parsed = JSON.parse(msg, jsonReviver);
-          if (parsed.type === 'DATA') {
-            callback(parsed.payload);
-          }
-        } catch (e) { }
-      }
+    this.dataQueue.stream((msg: string) => {
+      try {
+        const parsed = JSON.parse(msg, jsonReviver);
+        if (parsed.type === 'DATA') {
+          callback(parsed.payload);
+        }
+      } catch (_e) { }
     });
   }
 
-  async runVerification(inputs: { age?: number; residency?: number; minAge?: number; requiredResidency?: number }): Promise<boolean> {
+  async runVerification(inputs: {
+    age?: number;
+    residency?: number;
+    minAge?: number;
+    requiredResidency?: number;
+  }): Promise<boolean> {
     const { socket } = this;
     const party = this.party.value;
 
@@ -96,9 +107,10 @@ export default class App {
     const TOTAL_BYTES = 150000;
     let currentBytes = 0;
 
-    const input = party === 'alice'
-      ? { minAge: inputs.minAge, requiredResidency: inputs.requiredResidency }
-      : { age: inputs.age, residency: inputs.residency };
+    const input =
+      party === 'alice'
+        ? { minAge: inputs.minAge, requiredResidency: inputs.requiredResidency }
+        : { age: inputs.age, residency: inputs.residency };
 
     const otherParty = party === 'alice' ? 'bob' : 'alice';
 
@@ -112,11 +124,7 @@ export default class App {
       this.progress.set(currentBytes / TOTAL_BYTES);
     });
 
-    this.msgQueue.stream((msg: unknown) => {
-      if (!(msg instanceof Uint8Array)) {
-        throw new Error('Unexpected message type');
-      }
-
+    this.mpcQueue.stream((msg: Uint8Array) => {
       session.handleMessage(otherParty, msg);
 
       currentBytes += msg.byteLength;

@@ -1,1 +1,0 @@
-import { POD } from '@pcd/pod'; import { newEdDSAPrivateKey } from '@pcd/eddsa-pcd'; const k = newEdDSAPrivateKey(); try { const p = POD.sign({a: {type: 'int', value: 1n}}, k); console.log('success'); } catch(e) { console.log(e); }
