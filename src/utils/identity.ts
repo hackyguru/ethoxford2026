@@ -16,6 +16,7 @@ export interface IdentityData {
   age: number;
   residency: string; // "USA", "India" etc
   name: string;
+  photo?: string; // Base64 data URI
 }
 
 function base64ToBuffer(base64: string): Uint8Array {
