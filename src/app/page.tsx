@@ -71,13 +71,34 @@ export default function Home() {
 
   // Send request when Verifier connects
   useEffect(() => {
-    if (mode === 'verifier' && step === 3 && requestedFields.length > 0) {
-      setTimeout(() => {
-        console.log('Sending Request', requestedFields);
-        app.sendData({ type: 'POD_REQUEST', fields: requestedFields });
-      }, 500);
+    if (mode === 'verifier' && step === 3) {
+      // 1. Send ZK Request if needed
+      const ageReq = requirements['age'];
+      if (ageReq && ageReq.val) {
+        const minAge = Number(ageReq.val);
+        setTimeout(() => {
+          console.log("Sending MPC Request for Age");
+          app.sendData({ type: 'MPC_REQUEST', minAge });
+        }, 500);
+      }
+
+      // 2. Send POD Request for NON-conditional fields
+      // If we have a condition on Age, we DO NOT want to ask for Age disclosure.
+      const fieldsToRequest = requestedFields.filter(f => {
+        const req = requirements[f];
+        // If there is a requirement value, we assume ZK (for age) and don't request disclosure
+        if (f === 'age' && req && req.val) return false;
+        return true;
+      });
+
+      if (fieldsToRequest.length > 0) {
+        setTimeout(() => {
+          console.log("Sending POD Request", fieldsToRequest);
+          app.sendData({ type: 'POD_REQUEST', fields: fieldsToRequest });
+        }, 600);
+      }
     }
-  }, [mode, step, app, requestedFields]);
+  }, [mode, step, app, requestedFields, requirements]);
 
   useEffect(() => {
     // Auto-connect if code exists and ID is ready
@@ -218,21 +239,18 @@ export default function Home() {
       console.log('Generating Proof for:', fieldsToReveal);
 
       // 3. Create Cryptographic Presentation
-      const presentation = IdentityManager.createPresentation(
-        pod,
-        fieldsToReveal,
-      );
+      const presentation = IdentityManager.createPresentation(pod, fieldsToReveal);
 
       app.sendData({
         type: 'POD_PRESENTATION',
         presentation: presentation, // Use new structure
-        issuerPk: myIssuerPk,
+        issuerPk: myIssuerPk
       });
       setHolderStatus('ID Proof Sent (Selectively Revealed)');
       setPendingRequest([]);
     } catch (e) {
-      console.error('Failed to generate proof', e);
-      alert('Proof generation failed!');
+      console.error("Failed to generate proof", e);
+      alert("Proof generation failed!");
     }
   };
 
@@ -783,8 +801,8 @@ export default function Home() {
             </div>
           )}
 
-          {/* ZK Button - Only show if Age condition is set and no POD received yet (alternative flow) */}
-          {!receivedPod && requirements['age'] && requirements['age'].val && (
+          {/* ZK Button - Always show if Age condition is set, regardless of POD receipt */}
+          {requirements['age'] && requirements['age'].val && (
             <div className={styles.card} style={{ borderColor: '#9c27b0' }}>
               <h4 style={{ color: '#9c27b0' }}>🔒 Zero-Knowledge Check</h4>
               <p>
@@ -888,7 +906,15 @@ export default function Home() {
                                 >
                                   {key}
                                 </span>
-                                <strong>{val.value.toString()}</strong>
+                                <strong>
+                                  {hasReq ? (
+                                    <span style={{ color: '#9c27b0', fontStyle: 'italic' }}>
+                                      [Hidden]
+                                    </span>
+                                  ) : (
+                                    val.value.toString()
+                                  )}
+                                </strong>
                                 <span
                                   style={{
                                     fontSize: '0.8em',
