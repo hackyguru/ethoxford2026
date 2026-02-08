@@ -95,9 +95,11 @@ export default class App {
   async runVerification(inputs: {
     age?: number;
     residency?: number;
+    nameHash?: number; // New Input
     minAge?: number;
     requiredResidency?: number;
-  }): Promise<boolean> {
+    requiredNameHash?: number; // New Input
+  }): Promise<{ ageValid: boolean; residencyValid: boolean; nameValid: boolean }> {
     const { socket } = this;
     const party = this.party.value;
 
@@ -109,8 +111,16 @@ export default class App {
 
     const input =
       party === 'alice'
-        ? { minAge: inputs.minAge, requiredResidency: inputs.requiredResidency }
-        : { age: inputs.age, residency: inputs.residency };
+        ? {
+          minAge: inputs.minAge || 0,
+          requiredResidency: inputs.requiredResidency || 0,
+          requiredNameHash: inputs.requiredNameHash || 0,
+        }
+        : {
+          age: inputs.age || 0,
+          residency: inputs.residency || 0,
+          nameHash: inputs.nameHash || 0,
+        };
 
     const otherParty = party === 'alice' ? 'bob' : 'alice';
 
@@ -139,14 +149,14 @@ export default class App {
       // console.warn(`Bytes mismatch: ${currentBytes} vs ${TOTAL_BYTES}`);
     }
 
-    if (
-      output === null ||
-      typeof output !== 'object' ||
-      typeof output.valid !== 'number'
-    ) {
+    if (output === null || typeof output !== 'object') {
       throw new Error('Unexpected output');
     }
 
-    return output.valid === 1;
+    return {
+      ageValid: output.ageValid === 1,
+      residencyValid: output.residencyValid === 1,
+      nameValid: output.nameValid === 1
+    };
   }
 }

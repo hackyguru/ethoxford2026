@@ -209,52 +209,67 @@ export class IdentityManager {
     // 6. Verify Signature on Root
     if (derivedRoot === null) return false;
 
-    // Unpack keys just-in-time if not already
-    // (We unpacked above, but let's ensure we have valid objects)
-
-    // Explicit Debug for User
     console.log('--- Signature Verification Debug ---');
     console.log('Derived Root (BigInt):', derivedRoot.toString());
     console.log('Signer Public Key (Base64):', signerPublicKey);
 
-    try {
-      // Re-unpack to be sure we have the latest attempt's logic
-      // Try Standard Buffer (LE) first
-      let localPkObj;
+    // TRY ALL COMBINATIONS
+    const tryVerify = (label: string, msg: any, sig: any, pk: any) => {
       try {
-        const pkBuf = Buffer.from(base64ToBuffer(signerPublicKey));
-        localPkObj = unpackPublicKey(pkBuf);
-      } catch (_e) {
-        console.log('Standard unpack failed, trying reverse BigInt...');
-        const pkReverse = Buffer.from(
-          base64ToBuffer(signerPublicKey),
-        ).reverse();
-        const pkBi = BigInt('0x' + pkReverse.toString('hex'));
-        localPkObj = unpackPublicKey(pkBi);
-      }
-
-      const valid = verifySignature(derivedRoot, sigObj, localPkObj);
-
-      if (!valid) {
-        console.error('EdDSA Signature Invalid on Root', derivedRoot);
-        // Try verifying with the string version of root?
-        console.warn('Attempting verification with Root as Hex String...');
-        // Some verifiers expect hex string
-        const valid2 = verifySignature(
-          derivedRoot.toString(16),
-          sigObj,
-          localPkObj,
-        );
-        if (valid2) {
-          console.log('WAIT! It passed with Hex String root!');
+        if (verifySignature(msg, sig, pk)) {
+          console.log(`SUCCESS: Verification passed using [${label}]`);
           return true;
         }
-      } else {
-        console.log('Signature Validated Successfully.');
+      } catch (e) { /* ignore mismatches */ }
+      return false;
+    };
+
+    try {
+      const pkBuf = Buffer.from(base64ToBuffer(signerPublicKey));
+      const pkBufRev = Buffer.from(base64ToBuffer(signerPublicKey)).reverse();
+
+      const sigBuf = Buffer.from(base64ToBuffer(signature));
+      const sigBufRev = Buffer.from(base64ToBuffer(signature)).reverse();
+
+      // Prepare Key Objects
+      let pkObjStandard, pkObjRev;
+      try { pkObjStandard = unpackPublicKey(pkBuf); } catch (e) { console.log('Std PK Unpack failed'); }
+      try { pkObjRev = unpackPublicKey(pkBufRev); } catch (e) { console.log('Rev PK Unpack failed'); }
+
+      // Prepare Sig Objects
+      let sigObjStandard, sigObjRev;
+      try { sigObjStandard = unpackSignature(sigBuf); } catch (e) { console.log('Std Sig Unpack failed'); }
+      try { sigObjRev = unpackSignature(sigBufRev); } catch (e) { console.log('Rev Sig Unpack failed'); }
+
+      // Prepare Messages
+      const msgBi = derivedRoot;
+      const msgHex = derivedRoot.toString(16);
+
+      // Matrix Test
+      if (pkObjStandard && sigObjStandard) {
+        if (tryVerify("Std PK / Std Sig / BigInt", msgBi, sigObjStandard, pkObjStandard)) return true;
+        if (tryVerify("Std PK / Std Sig / Hex", msgHex, sigObjStandard, pkObjStandard)) return true;
       }
-      return valid;
+
+      if (pkObjRev && sigObjStandard) {
+        if (tryVerify("Rev PK / Std Sig / BigInt", msgBi, sigObjStandard, pkObjRev)) return true;
+        if (tryVerify("Rev PK / Std Sig / Hex", msgHex, sigObjStandard, pkObjRev)) return true;
+      }
+
+      // It is rare for Sig to need reversing if standard encoding, but let's check
+      if (pkObjStandard && sigObjRev) {
+        if (tryVerify("Std PK / Rev Sig / BigInt", msgBi, sigObjRev, pkObjStandard)) return true;
+      }
+
+      if (pkObjRev && sigObjRev) {
+        if (tryVerify("Rev PK / Rev Sig / BigInt", msgBi, sigObjRev, pkObjRev)) return true;
+      }
+
+      console.error("EdDSA Signature Invalid on Root (All variations failed)", derivedRoot);
+      return false;
+
     } catch (e) {
-      console.error('Signature Verification Crashed', e);
+      console.error("Signature Verification Crashed", e);
       return false;
     }
   }

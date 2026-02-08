@@ -6,6 +6,7 @@ import App from '@/utils/App';
 import { IdentityManager, IdentityData } from '@/utils/identity';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
+import { simpleHash } from '@/utils/simpleHash';
 
 export default function Home() {
   const app = useMemo(() => new App(), []);
@@ -59,8 +60,9 @@ export default function Home() {
   // const [disclosedData, setDisclosedData] = useState<any>(null);
 
   // MPC / ZK State
-  const [mpcRequest, setMpcRequest] = useState<{ minAge: number } | null>(null);
-  const [zkResult, setZkResult] = useState<boolean | null>(null);
+  const [mpcRequest, setMpcRequest] = useState<{ minAge?: number; checkName?: boolean } | null>(null);
+  const [zkResultAge, setZkResultAge] = useState<boolean | null>(null);
+  const [zkResultName, setZkResultName] = useState<boolean | null>(null);
   const mpcProgress = app.progress.use();
 
   // Common Connection State
@@ -125,11 +127,20 @@ export default function Home() {
   useEffect(() => {
     // Generate Issuer Key on load (mock setup)
     try {
-      const key = IdentityManager.generateIssuerKey();
-      setIssuerKey(key);
-      IdentityManager.getPublicKey(key).then(setIssuerPk);
+      // PERSISTENCE 1: Check localStorage for existing Issuer Key
+      const storedKey = localStorage.getItem('verifier_issuer_key');
+      if (storedKey) {
+        console.log("Loaded Issuer Key from Storage");
+        setIssuerKey(storedKey);
+        IdentityManager.getPublicKey(storedKey).then(setIssuerPk);
+      } else {
+        const key = IdentityManager.generateIssuerKey();
+        setIssuerKey(key);
+        IdentityManager.getPublicKey(key).then(setIssuerPk);
+        localStorage.setItem('verifier_issuer_key', key);
+      }
     } catch (e) {
-      console.error('Failed to init crypto', e);
+      console.error("Failed to init crypto", e);
     }
 
     // Listen for data
@@ -145,7 +156,7 @@ export default function Home() {
           setVerifierStatus('Received Proof. Verifying...');
         }
         if (data.type === 'MPC_REQUEST') {
-          setMpcRequest({ minAge: Number(data.minAge) });
+          setMpcRequest({ minAge: Number(data.minAge), checkName: data.checkName });
         }
       });
     }
@@ -215,14 +226,26 @@ export default function Home() {
     try {
       const parsed = JSON.parse(json);
       // Basic validation
-      if (!parsed.pod || !parsed.issuerPk) throw new Error('Missing fields');
+      if (!parsed.pod || !parsed.issuerPk) throw new Error("Missing fields");
       setMyPod(parsed.pod);
       setMyIssuerPk(parsed.issuerPk);
       setHolderStatus('ID Imported');
+
+      // PERSISTENCE 2: Save imported ID
+      localStorage.setItem('my_pod_data', json);
     } catch (e) {
       alert('Invalid ID Format: ' + e);
     }
   };
+
+  useEffect(() => {
+    // PERSISTENCE 3: Load Holder Data on mount
+    const cachedPod = localStorage.getItem('my_pod_data');
+    if (cachedPod) {
+      console.log("Restoring cached ID");
+      importID(cachedPod);
+    }
+  }, []);
 
   const sendID = () => {
     if (!myPod) return;
@@ -259,18 +282,34 @@ export default function Home() {
     try {
       setHolderStatus('Initializing Secure MPC...');
       const pod = IdentityManager.deserializePOD(myPod);
-      const ageVal = pod.content.getValue('age');
-      if (!ageVal) throw new Error('Age not found in ID');
 
-      const myAge = Number(ageVal.value); // Ensure number
+      // Extract attributes
+      let myAge = 0;
+      let myName = "";
+
+      const ageVal = pod.content.getValue('age');
+      if (ageVal) myAge = Number(ageVal.value);
+
+      const nameVal = pod.content.getValue('name');
+      if (nameVal) myName = String(nameVal.value);
 
       setHolderStatus('Running Zero-Knowledge Proof... (Please wait)');
-      const result = await app.runVerification({ age: myAge, residency: 1 });
+
+      const inputs = {
+        age: myAge,
+        residency: 1, // Dummy
+        nameHash: myName ? simpleHash(myName) : 0
+      };
+
+      const result = await app.runVerification(inputs); // Holder joins
+
+      // Holder doesn't necessarily see the result, but in this circuit both parties get output?
+      // Yes, outputPublic outputs to both.
+
+      const passed = result.ageValid && result.nameValid; // Roughly speaking
 
       setHolderStatus(
-        result
-          ? 'ZK Proof Passed! Verifier knows checking passed.'
-          : 'ZK Proof FAILED.',
+        'ZK Proof Completed. Verifier has received the result.'
       );
       setMpcRequest(null);
     } catch (e) {
@@ -347,25 +386,33 @@ export default function Home() {
     }
   };
 
-  const verifyAgeZK = async (minAge: number) => {
+  const verifyAgeZK = async (minAge: number, requiredName: string) => {
     try {
       setVerifierStatus('Initiating Zero-Knowledge Check...');
-      setZkResult(null);
+      setZkResultAge(null);
+      setZkResultName(null);
 
       // 1. Notify Holder
-      await app.sendData({ type: 'MPC_REQUEST', minAge });
+      // We send 'checkName: true' if we are checking name, but we DO NOT send the value.
+      await app.sendData({ type: 'MPC_REQUEST', minAge, checkName: !!requiredName });
 
       // 2. Start MPC
       setVerifierStatus(
         'Running Secure Multi-Party Computation... (waiting for user)',
       );
-      const valid = await app.runVerification({ minAge, requiredResidency: 1 });
+      const inputs = {
+        minAge,
+        requiredResidency: 0,
+        requiredNameHash: requiredName ? simpleHash(requiredName) : 0
+      };
 
-      setZkResult(valid);
+      const result = await app.runVerification(inputs);
+
+      setZkResultAge(result.ageValid);
+      if (requiredName) setZkResultName(result.nameValid);
+
       setVerifierStatus(
-        valid
-          ? '✅ ZK Proof Verified: Age Requirement Met!'
-          : '❌ ZK Proof Failed: Requirement NOT Met.',
+        'ZK Proof Completed.'
       );
     } catch (e) {
       console.error(e);
@@ -393,6 +440,22 @@ export default function Home() {
           SERVICE (Verifier)
         </button>
         <p>Verify Attributes</p>
+      </div>
+
+      <div style={{ marginTop: '50px', borderTop: '1px solid #ccc', paddingTop: '20px' }}>
+        <p style={{ fontSize: '0.8em', color: '#888' }}>Debug Actions</p>
+        <button
+          className={styles.button}
+          style={{ background: '#d32f2f', fontSize: '0.8em' }}
+          onClick={() => {
+            if (confirm("Are you sure? This will delete all keys and IDs.")) {
+              localStorage.clear();
+              window.location.reload();
+            }
+          }}
+        >
+          Reset All Data (Clear Storage)
+        </button>
       </div>
     </div>
   );
@@ -613,14 +676,21 @@ export default function Home() {
                       className={styles.card}
                       style={{ borderColor: '#9c27b0' }}
                     >
-                      <h4 style={{ color: '#9c27b0' }}>🔒 Private Age Check</h4>
-                      <p>
-                        Verifier wants to check if{' '}
-                        <strong>Age &ge; {mpcRequest.minAge}</strong>
-                      </p>
-                      <p style={{ fontSize: '0.9em' }}>
+                      <h4 style={{ color: '#9c27b0' }}>🔒 Private ZK Check</h4>
+                      {mpcRequest.minAge && (
+                        <p>
+                          Verifier wants to check if{' '}
+                          <strong>Age &ge; {mpcRequest.minAge}</strong>
+                        </p>
+                      )}
+                      {mpcRequest.checkName && (
+                        <p>
+                          Verifier wants to check if{' '}
+                          <strong>Name == [Hidden Target Name]</strong>
+                        </p>
+                      )}                      <p style={{ fontSize: '0.9em' }}>
                         Using Zero-Knowledge Proof (MPC). <br />
-                        They will <strong>NOT</strong> see your actual age.
+                        They will <strong>NOT</strong> see your actual data.
                       </p>
 
                       {mpcProgress > 0 && mpcProgress < 1 ? (
@@ -802,13 +872,19 @@ export default function Home() {
           )}
 
           {/* ZK Button - Always show if Age condition is set, regardless of POD receipt */}
-          {requirements['age'] && requirements['age'].val && (
+          {(mpcRequest?.minAge || requirements['age']?.val || requirements['name']?.val) && (
             <div className={styles.card} style={{ borderColor: '#9c27b0' }}>
               <h4 style={{ color: '#9c27b0' }}>🔒 Zero-Knowledge Check</h4>
-              <p>
-                Verify <strong>Age &ge; {requirements['age'].val}</strong>{' '}
-                without revealing strictly.
-              </p>
+
+              {requirements['age']?.val && (
+                <p>Verify <strong>Age &ge; {requirements['age'].val}</strong></p>
+              )}
+              {requirements['name']?.val && (
+                <p>Verify <strong>Name == {requirements['name'].val}</strong></p>
+              )}
+
+              <p style={{ fontSize: "0.8em" }}>without reveling strict values.</p>
+
               {mpcProgress > 0 && mpcProgress < 1 ? (
                 <div style={{ margin: '10px 0' }}>
                   <div
@@ -829,22 +905,36 @@ export default function Home() {
                 </div>
               ) : (
                 <button
-                  onClick={() => verifyAgeZK(Number(requirements['age'].val))}
+                  onClick={() => verifyAgeZK(
+                    Number(requirements['age']?.val || 0),
+                    requirements['name']?.val || ''
+                  )}
                   className={styles.button}
                   style={{ background: '#9c27b0' }}
                 >
-                  Verify Age (Private MPC)
+                  Verify Attributes (Private MPC)
                 </button>
               )}
-              {zkResult !== null && (
+              {zkResultAge !== null && (
                 <p
                   style={{
                     fontWeight: 'bold',
-                    color: zkResult ? 'green' : 'red',
+                    color: zkResultAge ? 'green' : 'red',
                     marginTop: '10px',
                   }}
                 >
-                  {zkResult ? 'PASSED ✅' : 'FAILED ❌'}
+                  AGE Check: {zkResultAge ? 'PASSED ✅' : 'FAILED ❌'}
+                </p>
+              )}
+              {zkResultName !== null && (
+                <p
+                  style={{
+                    fontWeight: 'bold',
+                    color: zkResultName ? 'green' : 'red',
+                    marginTop: '10px',
+                  }}
+                >
+                  NAME Check: {zkResultName ? 'PASSED ✅' : 'FAILED ❌'}
                 </p>
               )}
             </div>
