@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import styles from '../app/page.module.css';
 import { IdentityManager, IdentityData } from '@/utils/identity';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface IssuerViewProps {
   onBack: () => void;
@@ -143,6 +144,16 @@ export default function IssuerView({ onBack }: IssuerViewProps) {
       {mintedPod && (
         <div className={styles.result}>
           <p>ID Minted.</p>
+          <div
+            style={{
+              background: 'white',
+              padding: '10px',
+              display: 'inline-block',
+              marginBottom: '10px',
+            }}
+          >
+            <QRCodeSVG value={mintedPod} size={256} />
+          </div>
           <div
             style={{
               overflow: 'hidden',

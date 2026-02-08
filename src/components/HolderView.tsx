@@ -21,11 +21,11 @@ export default function HolderView({ app, onBack }: HolderViewProps) {
   const [pendingRequest, setPendingRequest] = useState<string[]>([]);
   const [mpcRequest, setMpcRequest] = useState<{ minAge?: number; checkName?: boolean } | null>(null);
   const [spinner, setSpinner] = useState(false);
-  const [joiningCode, setJoiningCode] = useState(''); // Local input state
 
   // Signals
   const step = app.step.use();
   const mpcProgress = app.progress.use();
+  const joiningCode = app.joiningCode.use(); // Use shared state
 
   // Photo Extraction
   const myPhoto = useMemo(() => {
@@ -242,14 +242,13 @@ export default function HolderView({ app, onBack }: HolderViewProps) {
                 type="text"
                 value={joiningCode}
                 placeholder="Enter Session Code from Verifier"
-                onChange={e => setJoiningCode(e.target.value)}
+                onChange={e => app.joiningCode.set(e.target.value)}
                 className={styles.input}
               />
               <button
                 onClick={async () => {
                   setSpinner(true);
-                  // Update app signal for joining code if needed, or just use local variable
-                  app.joiningCode.set(joiningCode);
+                  // app.joiningCode is already set via onChange
                   app.step.set(2);
                   try {
                     await app.connect(joiningCode, 'bob');

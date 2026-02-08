@@ -184,6 +184,44 @@ export default function VerifierView({ app, onBack }: VerifierViewProps) {
     }
   };
 
+  // Verification Interaction
+  const runVerificationSession = () => {
+    // 1. Identify Disclosure Fields (Those WITHOUT specific requirements)
+    //    If a field has a requirement (like age >= 18), we might NOT want to reveal it.
+    //    But if 'photo' is checked and has no value, we reveal it.
+    const disclosureFields = requestedFields.filter(f => {
+      const req = requirements[f];
+      // If requirement value is set, we treat it as ZK-only (hidden)
+      // UNLESS the user explicitly wants to check it openly?
+      // For complexity, let's say: Value Set = ZK. Value Empty = Reveal.
+      return !req || req.val === '';
+    });
+
+    // 2. Identify ZK Fields
+    const zkAge = requirements['age']?.val ? Number(requirements['age'].val) : 0;
+    const zkName = requirements['name']?.val || '';
+
+    let statusMsg = '';
+
+    // A. Send Disclosure Request
+    if (disclosureFields.length > 0) {
+      console.log("Requesting Disclosure:", disclosureFields);
+      app.sendData({ type: 'POD_REQUEST', fields: disclosureFields });
+      statusMsg += 'Requesting Attributes... ';
+    }
+
+    // B. Trigger ZK Check
+    if (zkAge > 0 || zkName !== '') {
+      console.log("Requesting ZK Check");
+      // We call the existing ZK function
+      verifyAgeZK(zkAge, zkName);
+      statusMsg += 'Starting ZK Proof...';
+    } else {
+      // If no ZK, we just update status manually since verifyAgeZK wasn't called
+      setVerifierStatus(statusMsg || 'Waiting for response...');
+    }
+  };
+
   const toggleRequest = (field: string) => {
     setRequestedFields(prev =>
       prev.includes(field) ? prev.filter(f => f !== field) : [...prev, field],
@@ -349,11 +387,7 @@ export default function VerifierView({ app, onBack }: VerifierViewProps) {
           {/* Send Request Button if not sent automatically? */}
           {/* We can reproduce the original behavior which waited for User to scan or manual action */}
 
-          <button onClick={() => {
-            app.sendData({ type: 'POD_REQUEST', fields: requestedFields });
-          }} className={styles.button} style={{ marginBottom: '10px' }}>
-            Request Attributes
-          </button>
+          {/* Old explicit Request button removed. Now handled by Unified Action */}
 
           {receivedPod && (
             <div className={styles.card}>
@@ -364,74 +398,64 @@ export default function VerifierView({ app, onBack }: VerifierViewProps) {
             </div>
           )}
 
-          {/* ZK Button - Always show if Age/Name condition is set */}
-          {(requirements['age']?.val || requirements['name']?.val) && (
-            <div className={styles.card} style={{ borderColor: '#9c27b0' }}>
-              <h4 style={{ color: '#9c27b0' }}>🔒 Zero-Knowledge Check</h4>
+          {/* Unified Verification Action */}
+          <div className={styles.card} style={{ borderColor: '#9c27b0' }}>
+            <h4>Verification Actions</h4>
+            <p style={{ fontSize: '0.9em' }}>
+              Click below to request data and/or run privacy checks based on your selection.
+            </p>
 
-              {requirements['age']?.val && (
-                <p>Verify <strong>Age &ge; {requirements['age'].val}</strong></p>
-              )}
-              {requirements['name']?.val && (
-                <p>Verify <strong>Name == {requirements['name'].val}</strong></p>
-              )}
-
-              <p style={{ fontSize: "0.8em" }}>without reveling strict values.</p>
-
-              {mpcProgress > 0 && mpcProgress < 1 ? (
-                <div style={{ margin: '10px 0' }}>
+            {mpcProgress > 0 && mpcProgress < 1 ? (
+              <div style={{ margin: '10px 0' }}>
+                <div
+                  style={{ height: '5px', background: '#eee', width: '100%' }}
+                >
                   <div
-                    style={{ height: '5px', background: '#eee', width: '100%' }}
-                  >
-                    <div
-                      style={{
-                        height: '100%',
-                        background: '#9c27b0',
-                        width: `${mpcProgress * 100}%`,
-                        transition: 'width 0.2s',
-                      }}
-                    ></div>
-                  </div>
-                  <p style={{ fontSize: '0.8em' }}>
-                    Computing... {(mpcProgress * 100).toFixed(0)}%
-                  </p>
+                    style={{
+                      height: '100%',
+                      background: '#9c27b0',
+                      width: `${mpcProgress * 100}%`,
+                      transition: 'width 0.2s',
+                    }}
+                  ></div>
                 </div>
-              ) : (
-                <button
-                  onClick={() => verifyAgeZK(
-                    Number(requirements['age']?.val || 0),
-                    requirements['name']?.val || ''
-                  )}
-                  className={styles.button}
-                  style={{ background: '#9c27b0' }}
-                >
-                  Verify Attributes (Private MPC)
-                </button>
-              )}
-              {zkResultAge !== null && (
-                <p
-                  style={{
-                    fontWeight: 'bold',
-                    color: zkResultAge ? 'green' : 'red',
-                    marginTop: '10px',
-                  }}
-                >
-                  AGE Check: {zkResultAge ? 'PASSED ✅' : 'FAILED ❌'}
+                <p style={{ fontSize: '0.8em' }}>
+                  Computing... {(mpcProgress * 100).toFixed(0)}%
                 </p>
-              )}
-              {zkResultName !== null && (
-                <p
-                  style={{
-                    fontWeight: 'bold',
-                    color: zkResultName ? 'green' : 'red',
-                    marginTop: '10px',
-                  }}
-                >
-                  NAME Check: {zkResultName ? 'PASSED ✅' : 'FAILED ❌'}
-                </p>
-              )}
-            </div>
-          )}
+              </div>
+            ) : (
+              <button
+                onClick={runVerificationSession}
+                className={styles.button}
+                style={{ background: '#9c27b0' }}
+              >
+                Verify Identity
+              </button>
+            )}
+
+            {zkResultAge !== null && (
+              <p
+                style={{
+                  fontWeight: 'bold',
+                  color: zkResultAge ? 'green' : 'red',
+                  marginTop: '10px',
+                }}
+              >
+                AGE Check: {zkResultAge ? 'PASSED ✅' : 'FAILED ❌'}
+              </p>
+            )}
+            {zkResultName !== null && (
+              <p
+                style={{
+                  fontWeight: 'bold',
+                  color: zkResultName ? 'green' : 'red',
+                  marginTop: '10px',
+                }}
+              >
+                NAME Check: {zkResultName ? 'PASSED ✅' : 'FAILED ❌'}
+              </p>
+            )}
+          </div>
 
           {verificationResult !== null && (
             <div className={styles.result}>

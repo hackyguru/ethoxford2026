@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import styles from './page.module.css';
 import App from '@/utils/App';
 import IssuerView from '@/components/IssuerView';
@@ -12,6 +12,18 @@ export default function Home() {
 
   // Mode: 'home' | 'issuer' | 'holder' | 'verifier'
   const [mode, setMode] = useState<'home' | 'issuer' | 'holder' | 'verifier'>('home');
+
+  useEffect(() => {
+    // Auto-detect link code
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      if (code) {
+        setMode('holder');
+        app.joiningCode.set(code);
+      }
+    }
+  }, [app]);
 
   const goBack = () => {
     // Reset basic app state to allow re-joining/hosting logic to reset
