@@ -1,0 +1,39 @@
+{
+  "name": "mpc-hello-next-js",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "format": "prettier -c .",
+    "format:fix": "prettier -w ."
+  },
+  "dependencies": {
+    "@pcd/eddsa-pcd": "^0.10.0",
+    "@pcd/pcd-types": "^0.15.0",
+    "@pcd/pod": "^0.5.1",
+    "ee-typed": "^0.1.1",
+    "emp-wasm-engine": "^0.5.3",
+    "events": "^3.3.0",
+    "html5-qrcode": "^2.3.8",
+    "mpc-framework": "^0.3.0",
+    "next": "^15.3.0",
+    "qrcode.react": "^4.2.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "rtc-pair-socket": "^0.1.7",
+    "summon-ts": "0.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint-config-next": "^15.1.6",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.2",
+    "prettier": "^3.4.2",
+    "typescript": "^5"
+  }
+}
