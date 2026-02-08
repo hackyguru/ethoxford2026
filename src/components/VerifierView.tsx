@@ -6,6 +6,7 @@ import App from '@/utils/App';
 import { IdentityManager } from '@/utils/identity';
 import { simpleHash } from '@/utils/simpleHash';
 import { PODEntries, POD } from '@pcd/pod';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface VerifierViewProps {
   app: App;
@@ -39,6 +40,8 @@ export default function VerifierView({ app, onBack }: VerifierViewProps) {
   // Trust State
   const [trustedIssuers, setTrustedIssuers] = useState<string[]>([]);
   const [newTrustedKey, setNewTrustedKey] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [isVerificationStarted, setIsVerificationStarted] = useState(false);
 
   // Persistence: Trusted Issuers
   useEffect(() => {
@@ -61,6 +64,14 @@ export default function VerifierView({ app, onBack }: VerifierViewProps) {
       });
     }
   }, [app]);
+
+  // Auto-verify when POD is received
+  useEffect(() => {
+    if (receivedPod) {
+      verifyID();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receivedPod]);
 
   // Trusted Issuer Management
   const addTrustedIssuer = () => {
@@ -186,6 +197,8 @@ export default function VerifierView({ app, onBack }: VerifierViewProps) {
 
   // Verification Interaction
   const runVerificationSession = () => {
+    setIsVerificationStarted(true);
+
     // 1. Identify Disclosure Fields (Those WITHOUT specific requirements)
     //    If a field has a requirement (like age >= 18), we might NOT want to reveal it.
     //    But if 'photo' is checked and has no value, we reveal it.
@@ -230,72 +243,105 @@ export default function VerifierView({ app, onBack }: VerifierViewProps) {
 
   return (
     <div className={styles.step}>
-      <h3>
-        <button onClick={onBack} className={styles.back}>
-          ←
-        </button>{' '}
-        Service Verifier
-      </h3>
+      <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <button onClick={onBack} className={styles.back} style={{ marginRight: '16px', padding: 0 }}>
+            ←
+          </button>
+          <h3 style={{ margin: 0, color: '#fff' }}>Verify Someone</h3>
+        </div>
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className={styles.buttonSecondary}
+          style={{ width: 'auto', padding: '8px 12px', fontSize: '0.9rem' }}
+        >
+          {showSettings ? 'Close' : '⚙️'}
+        </button>
+      </div>
 
-      {step === 1 && (
-        <>
-          <div className={styles.card} style={{ borderColor: '#2196f3' }}>
-            <h4>Trusted Issuers</h4>
-            <div style={{ display: 'flex', gap: '5px' }}>
-              <input
-                value={newTrustedKey}
-                onChange={e => setNewTrustedKey(e.target.value)}
-                placeholder="Paste Issuer Public Key"
-                className={styles.input}
-                style={{ fontSize: '0.8em' }}
-              />
-              <button onClick={addTrustedIssuer} className={styles.button} style={{ width: 'auto', padding: '5px' }}>
-                Add
-              </button>
-            </div>
-            {trustedIssuers.length > 0 && (
-              <ul style={{ textAlign: 'left', fontSize: '0.7em', color: '#555', wordBreak: 'break-all' }}>
-                {trustedIssuers.map(k => <li key={k}>{k.substring(0, 15)}...</li>)}
-              </ul>
-            )}
-            {trustedIssuers.length > 0 && (
-              <button onClick={clearTrustedIssuers} style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7em' }}>
-                Clear Trusted List
-              </button>
-            )}
+      {showSettings && (
+        <div className={styles.card} style={{ borderColor: 'rgba(255,255,255,0.2)' }}>
+          <h4 style={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px', marginBottom: '15px' }}>Trusted Issuers</h4>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+            <input
+              value={newTrustedKey}
+              onChange={e => setNewTrustedKey(e.target.value)}
+              placeholder="Paste Issuer Public Key"
+              className={styles.input}
+              style={{ fontSize: '0.8em', flex: 1 }}
+            />
+            <button
+              onClick={addTrustedIssuer}
+              className={styles.button}
+              style={{ width: 'auto', padding: '0 20px', whiteSpace: 'nowrap' }}
+            >
+              Add Key
+            </button>
           </div>
+          {trustedIssuers.length > 0 && (
+            <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+              <ul style={{ textAlign: 'left', fontSize: '0.75em', color: '#aaa', wordBreak: 'break-all', fontFamily: 'monospace', listStyle: 'none', padding: 0, margin: 0 }}>
+                {trustedIssuers.map((k, i) => (
+                  <li key={k} style={{ padding: '8px 0', borderBottom: i < trustedIssuers.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                    <span style={{ color: '#fff', marginRight: '8px' }}>[{i + 1}]</span>
+                    {k}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {trustedIssuers.length > 0 && (
+            <button onClick={clearTrustedIssuers} className={styles.buttonSecondary} style={{ marginTop: '15px', color: '#ff6b6b', borderColor: 'rgba(255,107,107,0.3)' }}>
+              Clear Trusted List
+            </button>
+          )}
 
+          <div style={{ height: '20px' }}></div>
+          <p style={{ color: '#888', fontSize: '0.8rem' }}>Add public keys of issuers you trust. The verifier will warn you if a proof is signed by an unknown issuer.</p>
+        </div>
+      )}
+
+      {!showSettings && step === 1 && (
+        <>
           <div className={styles.card}>
-            <p>Request specific attributes:</p>
+            <p style={{ marginBottom: '20px', color: '#fff' }}>Configure Verification Requirements</p>
             <div
-              style={{ textAlign: 'left', margin: '0 auto', maxWidth: '300px' }}
+              style={{ textAlign: 'left', margin: '0 auto', width: '100%' }}
             >
               {['name', 'age', 'residency', 'photo'].map(f => (
                 <div
                   key={f}
-                  style={{ marginBottom: '8px', borderBottom: '1px solid #eee' }}
+                  style={{
+                    marginBottom: '12px',
+                    background: 'rgba(255,255,255,0.03)',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    border: '1px solid rgba(255,255,255,0.05)'
+                  }}
                 >
-                  <label style={{ display: 'block', fontWeight: 'bold' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', cursor: 'pointer', color: '#fff' }}>
                     <input
                       type="checkbox"
                       checked={requestedFields.includes(f)}
                       onChange={() => toggleRequest(f)}
+                      style={{ marginRight: '10px', width: '18px', height: '18px', accentColor: '#fff' }}
                     />{' '}
-                    {f}
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
                   </label>
                   {requestedFields.includes(f) && (
                     <div
                       style={{
-                        marginLeft: '25px',
+                        marginLeft: '28px',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '5px',
-                        marginBottom: '5px',
+                        gap: '8px',
+                        marginTop: '10px',
                       }}
                     >
-                      <span style={{ fontSize: '0.8em' }}>Req:</span>
+                      <span style={{ fontSize: '0.8em', color: '#888' }}>Condition:</span>
                       <select
-                        style={{ fontSize: '0.8em' }}
+                        className={styles.input}
+                        style={{ fontSize: '0.8em', width: '60px', padding: '4px', height: '32px' }}
                         value={requirements[f]?.op || '=='}
                         onChange={e =>
                           setRequirements(p => ({
@@ -312,12 +358,15 @@ export default function VerifierView({ app, onBack }: VerifierViewProps) {
                         <option value="<=">{'<='}</option>
                       </select>
                       <input
+                        className={styles.input}
                         style={{
                           fontSize: '0.8em',
-                          width: '80px',
-                          padding: '2px',
+                          flex: 1,
+                          padding: '4px 8px',
+                          height: '32px',
+                          marginTop: 0
                         }}
-                        placeholder="Value"
+                        placeholder="Value (Optional)"
                         value={requirements[f]?.val || ''}
                         onChange={e =>
                           setRequirements(p => ({
@@ -331,244 +380,229 @@ export default function VerifierView({ app, onBack }: VerifierViewProps) {
                 </div>
               ))}
             </div>
-            <p>Start a verification session</p>
-            <button
-              onClick={() => {
-                // We need to send requests to Holder when they join?
-                // The original code did not send requests immediately.
-                // It waited.
-                // Actually app.host() sets mode to 'alice' and step to 2.
-                // Request sending needs to happen when holder connects or on demand.
-                // Use 'app.host()'
-                app.host();
-                // Send Request Payload to signal needed fields?
-                // Original code never sent "POD_REQUEST" explicitly in handle?
-                // It was just implicit or handled manually?
-                // Ah, 'app.connect' sends nothing.
-                // We should probably broadcast requirements if we want auto-prompt.
-              }}
-              className={styles.button}
-            >
-              Create Session
-            </button>
+            <div style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+              <button
+                onClick={() => {
+                  app.host();
+                }}
+                className={styles.button}
+              >
+                Start Verification Session
+              </button>
+            </div>
           </div>
         </>
       )}
 
-      {step === 2 && (
+      {!showSettings && step === 2 && (
         <div>
-          <p>Share this link to verify identity:</p>
-          <div
-            className={styles.card}
-            style={{
-              padding: '15px',
-              background: '#f5f5f5',
-              wordBreak: 'break-all',
-              userSelect: 'all',
-              cursor: 'text',
-            }}
-          >
-            {typeof window !== 'undefined'
-              ? `${window.location.origin}?code=${joiningCode}`
-              : joiningCode}
+          <div className={styles.card}>
+            <h4 style={{ color: '#fff', marginBottom: '20px' }}>Waiting for Holder</h4>
+            <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', display: 'inline-block', marginBottom: '20px' }}>
+              <QRCodeSVG value={`${typeof window !== 'undefined' ? window.location.origin : ''}?code=${joiningCode}`} size={180} />
+            </div>
+            <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: '10px' }}>
+              Share this code or scan with Wallet
+            </p>
+            <div
+              onClick={() => { navigator.clipboard.writeText(joiningCode) }}
+              style={{
+                padding: '12px',
+                background: 'rgba(255,255,255,0.1)',
+                borderRadius: '8px',
+                fontFamily: 'monospace',
+                fontSize: '1.5rem',
+                fontWeight: 'bold',
+                color: '#fff',
+                letterSpacing: '4px',
+                cursor: 'pointer',
+                border: '1px solid rgba(255,255,255,0.1)',
+                marginBottom: '24px'
+              }}
+              title="Click to copy Code"
+            >
+              {joiningCode}
+            </div>
+
+            <div style={{ textAlign: 'left', background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px' }}>
+              <p style={{ margin: '0 0 8px 0', fontSize: '0.8rem', color: '#888' }}>Share Direct Link</p>
+              <div
+                onClick={() => {
+                  const url = `${window.location.origin}?code=${joiningCode}`;
+                  navigator.clipboard.writeText(url);
+                }}
+                style={{
+                  color: '#4ade80',
+                  fontSize: '0.85rem',
+                  wordBreak: 'break-all',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  textDecoration: 'underline',
+                  opacity: 0.9
+                }}
+                title="Click to copy Link"
+              >
+                {typeof window !== 'undefined' ? `${window.location.origin}?code=${joiningCode}` : ''}
+              </div>
+            </div>
           </div>
-          <p style={{ fontSize: '0.9em', color: '#666' }}>
-            Or enter code manually: <strong>{joiningCode}</strong>
-          </p>
-          <p>Waiting for user...</p>
         </div>
       )}
 
-      {step === 3 && (
-        <div>
-          <p style={{ color: 'green' }}>User Connected.</p>
-          <p>Waiting for ID presentation...</p>
+      {!showSettings && step === 3 && (
+        <div style={{ animation: 'fadeIn 0.5s ease-out' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px', color: '#4ade80' }}>
+            <span style={{ fontSize: '1.2em' }}>●</span> User Connected
+          </div>
 
-          {/* Send Request Button if not sent automatically? */}
-          {/* We can reproduce the original behavior which waited for User to scan or manual action */}
-
-          {/* Old explicit Request button removed. Now handled by Unified Action */}
-
-          {receivedPod && (
-            <div className={styles.card}>
-              <h4>ID Received</h4>
-              <button onClick={verifyID} className={styles.button}>
-                Verify Signature
-              </button>
+          {!receivedPod && zkResultAge === null && zkResultName === null && (
+            <div className={styles.card} style={{ opacity: 0.8 }}>
+              {isVerificationStarted ? (
+                <>
+                  <div className={styles.spinner}></div>
+                  <p style={{ marginTop: '16px', color: '#aaa' }}>Waiting for ID presentation...</p>
+                </>
+              ) : (
+                <button onClick={runVerificationSession} className={styles.buttonSecondary} style={{ marginTop: '20px' }}>
+                  Begin Verification
+                </button>
+              )}
             </div>
           )}
 
-          {/* Unified Verification Action */}
-          <div className={styles.card} style={{ borderColor: '#9c27b0' }}>
-            <h4>Verification Actions</h4>
-            <p style={{ fontSize: '0.9em' }}>
-              Click below to request data and/or run privacy checks based on your selection.
-            </p>
+          {receivedPod && (
+            <div className={styles.card} style={{ borderColor: 'rgba(255, 255, 255, 0.3)' }}>
+              <h4 style={{ color: '#fff' }}>ID Presentation Received</h4>
+              <p style={{ fontSize: '0.8rem', color: '#aaa', marginBottom: '20px' }}>
+                Issuer PK: {receivedIssuerPk.substring(0, 10)}...
+              </p>
+            </div>
+          )}
+
+          {/* Verification Results */}
+          <div className={styles.card} style={{ marginTop: '20px' }}>
+            <h4 style={{ color: '#fff', marginBottom: '16px' }}>Verification Status</h4>
 
             {mpcProgress > 0 && mpcProgress < 1 ? (
-              <div style={{ margin: '10px 0' }}>
+              <div style={{ margin: '20px 0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#aaa', marginBottom: '8px' }}>
+                  <span>Zero-Knowledge Check</span>
+                  <span>{(mpcProgress * 100).toFixed(0)}%</span>
+                </div>
                 <div
-                  style={{ height: '5px', background: '#eee', width: '100%' }}
+                  style={{ height: '6px', background: 'rgba(255,255,255,0.1)', width: '100%', borderRadius: '3px', overflow: 'hidden' }}
                 >
                   <div
                     style={{
                       height: '100%',
-                      background: '#9c27b0',
+                      background: '#a78bfa',
                       width: `${mpcProgress * 100}%`,
                       transition: 'width 0.2s',
                     }}
                   ></div>
                 </div>
-                <p style={{ fontSize: '0.8em' }}>
-                  Computing... {(mpcProgress * 100).toFixed(0)}%
-                </p>
               </div>
-            ) : (
-              <button
-                onClick={runVerificationSession}
-                className={styles.button}
-                style={{ background: '#9c27b0' }}
-              >
-                Verify Identity
-              </button>
+            ) : null}
+
+            {zkResultAge === null && zkResultName === null && mpcProgress === 0 && !verificationResult && (
+              <p style={{ color: '#666', fontStyle: 'italic' }}>Pending Verification...</p>
             )}
 
-            {zkResultAge !== null && (
-              <p
-                style={{
-                  fontWeight: 'bold',
-                  color: zkResultAge ? 'green' : 'red',
-                  marginTop: '10px',
-                }}
-              >
-                AGE Check: {zkResultAge ? 'PASSED ✅' : 'FAILED ❌'}
-              </p>
-            )}
-            {zkResultName !== null && (
-              <p
-                style={{
-                  fontWeight: 'bold',
-                  color: zkResultName ? 'green' : 'red',
-                  marginTop: '10px',
-                }}
-              >
-                NAME Check: {zkResultName ? 'PASSED ✅' : 'FAILED ❌'}
-              </p>
-            )}
-          </div>
-
-          {verificationResult !== null && (
-            <div className={styles.result}>
-              <div
-                style={{
-                  color: verificationResult ? 'green' : 'red',
-                  fontWeight: 'bold',
-                }}
-              >
-                {verificationResult ? '✅ VALID SIGNATURE' : '❌ INVALID'}
-              </div>
-              <p style={{ fontSize: '0.8em' }}>{verifierStatus}</p>
-
-              {verificationResult && (
-                <div
-                  style={{
-                    marginTop: '10px',
-                    textAlign: 'left',
-                    background: '#eee',
-                    padding: '10px',
-                    borderRadius: '5px',
-                  }}
-                >
-                  <p>
-                    <strong>Revealed Attributes:</strong>
-                  </p>
-                  {(() => {
-                    if (!receivedPod || !receivedPod.revealed) return null;
-                    const revealed = receivedPod.revealed;
-                    return (
-                      <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
-                        {Object.keys(revealed).map(key => {
-                          const val = revealed[key].value;
-                          const reqPassed = requirementResults[key];
-
-                          if (key === 'photo') {
-                            return (
-                              <li key={key} style={{ marginBottom: '5px', padding: '5px', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center' }}>
-                                <span style={{ textTransform: 'capitalize', width: '80px', display: 'inline-block', fontWeight: 'bold' }}>Photo</span>
-                                <img src={val.value.toString()} style={{ width: '100px', borderRadius: '5px', border: '2px solid green' }} />
-                                <span style={{ fontSize: '0.8em', color: 'green', marginLeft: '10px' }}> ✅ Verified</span>
-                              </li>
-                            );
-                          }
-
-                          // Only show requiremenet status if one was set
-                          const hasReq =
-                            requirements[key] && requirements[key].val !== '';
-
-                          return (
-                            <li
-                              key={key}
-                              style={{
-                                marginBottom: '5px',
-                                padding: '5px',
-                                borderBottom: '1px solid #ccc',
-                              }}
-                            >
-                              <div>
-                                <span
-                                  style={{
-                                    textTransform: 'capitalize',
-                                    width: '80px',
-                                    display: 'inline-block',
-                                  }}
-                                >
-                                  {key}
-                                </span>
-                                <strong>
-                                  {hasReq ? (
-                                    <span style={{ color: '#9c27b0', fontStyle: 'italic' }}>
-                                      [Hidden]
-                                    </span>
-                                  ) : (
-                                    val.value.toString()
-                                  )}
-                                </strong>
-                                <span
-                                  style={{
-                                    fontSize: '0.8em',
-                                    color: 'green',
-                                    marginLeft: '5px',
-                                  }}
-                                >
-                                  {' '}
-                                  (Verified)
-                                </span>
-                              </div>
-                              {hasReq && (
-                                <div
-                                  style={{
-                                    fontSize: '0.9em',
-                                    marginTop: '2px',
-                                    color: reqPassed ? 'green' : 'red',
-                                  }}
-                                >
-                                  Condition: {requirements[key]?.op}{' '}
-                                  {requirements[key]?.val}
-                                  <strong style={{ marginLeft: '10px' }}>
-                                    {reqPassed ? '✅ MET' : '❌ FAILED'}
-                                  </strong>
-                                </div>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    );
-                  })()}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {zkResultAge !== null && (
+                <div style={{
+                  padding: '12px',
+                  borderRadius: '8px',
+                  background: zkResultAge ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)',
+                  border: `1px solid ${zkResultAge ? 'rgba(74, 222, 128, 0.3)' : 'rgba(248, 113, 113, 0.3)'}`,
+                  color: zkResultAge ? '#4ade80' : '#f87171',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}>
+                  <span>Age Requirement</span>
+                  <strong>{zkResultAge ? 'PASSED' : 'FAILED'}</strong>
+                </div>
+              )}
+              {zkResultName !== null && (
+                <div style={{
+                  padding: '12px',
+                  borderRadius: '8px',
+                  background: zkResultName ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)',
+                  border: `1px solid ${zkResultName ? 'rgba(74, 222, 128, 0.3)' : 'rgba(248, 113, 113, 0.3)'}`,
+                  color: zkResultName ? '#4ade80' : '#f87171',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}>
+                  <span>Name Requirement</span>
+                  <strong>{zkResultName ? 'PASSED' : 'FAILED'}</strong>
                 </div>
               )}
             </div>
-          )}
+
+            {/* Results List */}
+            {verificationResult !== null && (
+              <div style={{ marginTop: '24px', textAlign: 'left' }}>
+                <div style={{
+                  marginBottom: '16px',
+                  textAlign: 'center',
+                  color: verificationResult ? '#4ade80' : '#f87171',
+                  fontSize: '1.2rem',
+                  fontWeight: 'bold',
+                  textShadow: '0 0 20px rgba(0,0,0,0.5)'
+                }}>
+                  {verificationResult ? 'CRYPTOGRAPHIC PROOF VALID' : 'PROOF INVALID'}
+                </div>
+
+                {verificationResult && receivedPod && receivedPod.revealed && (
+                  <div className={styles.card} style={{ background: 'rgba(0,0,0,0.4)', padding: '0' }}>
+                    {Object.keys(receivedPod.revealed).map(key => {
+                      const val = receivedPod.revealed[key].value;
+                      const reqPassed = requirementResults[key];
+                      const hasReq = requirements[key] && requirements[key].val !== '';
+
+                      if (key === 'photo') {
+                        return (
+                          <div key={key} style={{ padding: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <div style={{ width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', background: '#000' }}>
+                              <img src={val.value.toString()} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase' }}>Photo</div>
+                              <div style={{ color: '#4ade80', fontSize: '0.9rem' }}>Verified Integrity</div>
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <div key={key} style={{ padding: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase' }}>{key}</div>
+                            <div style={{ color: hasReq ? '#a78bfa' : '#fff', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                              {hasReq ? '[Hidden Value]' : val.value.toString()}
+                            </div>
+                          </div>
+
+                          {hasReq ? (
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '0.75rem', color: '#666' }}>Condition: {requirements[key]?.op} {requirements[key]?.val}</div>
+                              <div style={{ color: reqPassed ? '#4ade80' : '#f87171', fontWeight: 'bold' }}>
+                                {reqPassed ? 'MET' : 'FAILED'}
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ color: '#4ade80', fontSize: '1.2rem' }}>✓</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

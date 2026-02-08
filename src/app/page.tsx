@@ -3,15 +3,15 @@
 import { useMemo, useState, useEffect } from 'react';
 import styles from './page.module.css';
 import App from '@/utils/App';
-import IssuerView from '@/components/IssuerView';
-import HolderView from '@/components/HolderView';
-import VerifierView from '@/components/VerifierView';
+import ProfileTab from '@/components/ProfileTab';
+import VerifyTab from '@/components/VerifyTab';
 
 export default function Home() {
   const app = useMemo(() => new App(), []);
 
-  // Mode: 'home' | 'issuer' | 'holder' | 'verifier'
-  const [mode, setMode] = useState<'home' | 'issuer' | 'holder' | 'verifier'>('home');
+  // Navigation State
+  const [activeTab, setActiveTab] = useState<'verify' | 'profile'>('verify');
+  const [hasUnreadAlerts, setHasUnreadAlerts] = useState(false);
 
   useEffect(() => {
     // Auto-detect link code
@@ -19,74 +19,49 @@ export default function Home() {
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
       if (code) {
-        setMode('holder');
+        // If there's a code, we go to "Get Verified" flow.
+        // We'll pass this via app state, but we need to ensure we are on Verify Tab
+        setActiveTab('verify');
         app.joiningCode.set(code);
+        // Note: verifyTab will need to default to 'get_verified' if it sees a code? 
+        // Or we can just let the user click it. 
+        // Better UX: VerifyTab automatically opens HolderView?
+        // For now let's just switch tab.
       }
     }
   }, [app]);
 
-  const goBack = () => {
-    // Reset basic app state to allow re-joining/hosting logic to reset
-    app.step.set(1);
-    setMode('home');
-  };
-
   return (
     <div className={styles.container}>
-      {mode === 'home' && (
-        <div className={styles.step}>
-          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-            <h1 style={{ fontSize: '2.5rem', color: '#333' }}>VeriPod</h1>
-            <p style={{ color: '#666' }}>Privacy-First Digital Identity Wallet</p>
+
+      {/* Main Content Area */}
+      <div className={styles.contentArea}>
+        {activeTab === 'verify' && <VerifyTab app={app} />}
+        {activeTab === 'profile' && <ProfileTab app={app} />}
+      </div>
+
+      {/* Bottom Navigation Bar */}
+      <div className={styles.bottomNav}>
+        <button
+          className={`${styles.navItem} ${activeTab === 'verify' ? styles.navItemActive : ''}`}
+          onClick={() => setActiveTab('verify')}
+        >
+          <span className={styles.navIcon}>⚡</span>
+          <span>Verify</span>
+        </button>
+
+        <button
+          className={`${styles.navItem} ${activeTab === 'profile' ? styles.navItemActive : ''}`}
+          onClick={() => setActiveTab('profile')}
+        >
+          <div style={{ position: 'relative' }}>
+            <span className={styles.navIcon}>👤</span>
+            {hasUnreadAlerts && <span style={{ position: 'absolute', top: 0, right: -5, width: 8, height: 8, background: 'red', borderRadius: '50%' }} />}
           </div>
+          <span>Profile</span>
+        </button>
+      </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', maxWidth: '400px', margin: '0 auto' }}>
-            <button onClick={() => setMode('issuer')} className={styles.card} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '15px', padding: '20px' }}>
-              <div style={{ fontSize: '2rem' }}>🏛️</div>
-              <div>
-                <h3 style={{ margin: 0 }}>Government (Issuer)</h3>
-                <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Mint verified digital IDs for citizens</p>
-              </div>
-            </button>
-
-            <button onClick={() => setMode('holder')} className={styles.card} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '15px', padding: '20px' }}>
-              <div style={{ fontSize: '2rem' }}>👤</div>
-              <div>
-                <h3 style={{ margin: 0 }}>Citizen (Holder)</h3>
-                <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Manage your ID & prove attributes</p>
-              </div>
-            </button>
-
-            <button onClick={() => setMode('verifier')} className={styles.card} style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '15px', padding: '20px' }}>
-              <div style={{ fontSize: '2rem' }}>🔍</div>
-              <div>
-                <h3 style={{ margin: 0 }}>Service (Verifier)</h3>
-                <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Verify ages, names, & residency</p>
-              </div>
-            </button>
-          </div>
-
-          <div style={{ marginTop: '50px', borderTop: '1px solid #ccc', paddingTop: '20px', textAlign: 'center' }}>
-            <p style={{ fontSize: '0.8em', color: '#888' }}>Debug Actions</p>
-            <button
-              className={styles.button}
-              style={{ background: '#d32f2f', fontSize: '0.8em', width: 'auto' }}
-              onClick={() => {
-                if (confirm("Are you sure? This will delete all keys and IDs.")) {
-                  localStorage.clear();
-                  window.location.reload();
-                }
-              }}
-            >
-              Reset All Data (Clear Storage)
-            </button>
-          </div>
-        </div>
-      )}
-
-      {mode === 'issuer' && <IssuerView onBack={goBack} />}
-      {mode === 'holder' && <HolderView app={app} onBack={goBack} />}
-      {mode === 'verifier' && <VerifierView app={app} onBack={goBack} />}
     </div>
   );
 }

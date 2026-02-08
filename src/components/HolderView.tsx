@@ -65,6 +65,9 @@ export default function HolderView({ app, onBack }: HolderViewProps) {
     if (isScanning && !myPod) {
       // Small timeout to ensure DOM is ready
       const timer = setTimeout(() => {
+        // Ensure element exists before initializing
+        if (!document.getElementById('reader')) return;
+
         const scanner = new Html5QrcodeScanner(
           'reader',
           { fps: 10, qrbox: { width: 250, height: 250 } },
@@ -82,11 +85,60 @@ export default function HolderView({ app, onBack }: HolderViewProps) {
         );
 
         // Cleanup
-        return () => { try { scanner.clear(); } catch (e) { } };
+        return () => { try { scanner.clear().catch(e => console.log(e)); } catch (e) { } };
       }, 100);
       return () => clearTimeout(timer);
     }
   }, [isScanning, myPod]);
+
+  // QR Scanner Effect for Connection
+  useEffect(() => {
+    // Only run this scan logic if we are "isScanning" AND step is 1 (Connecting) And we have a profile
+    if (isScanning && step === 1 && myPod) {
+      // Small timeout to ensure DOM is ready
+      const timer = setTimeout(() => {
+        // Ensure element exists before initializing
+        if (!document.getElementById('connection-reader')) return;
+
+        const scanner = new Html5QrcodeScanner(
+          'connection-reader',
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          false,
+        );
+
+        scanner.render(
+          decodedText => {
+            // Assume the QR text IS the code or a URL containing ?code=...
+            let code = decodedText;
+            try {
+              const url = new URL(decodedText);
+              const c = url.searchParams.get('code');
+              if (c) code = c;
+            } catch (e) { }
+
+            console.log("Scanned Connection Code:", code);
+            app.joiningCode.set(code);
+            scanner.clear();
+            setIsScanning(false);
+          },
+          _error => { }
+        );
+
+        // Store cleanup function
+        return () => { try { scanner.clear().catch(e => console.log('Scanner Cleanup Error (Ignored):', e)); } catch (e) { } };
+      }, 100);
+
+      // Cleanup cleanup function when the effect re-runs or component unmounts
+      return () => {
+        clearTimeout(timer);
+        // If scanner instance is exposed, we could clean it here, but it's local scope.
+        // Effectively the scanner.clear() inside the timeout logic handles it, or the return of the timeout handles it
+        // BUT: The issue is scanner.clear() returns a Promise. 
+        // If we unmount before scanner is ready, it's fine. 
+        // If we unmount after scanner is ready, the inner return runs. 
+      };
+    }
+  }, [isScanning, step, myPod, app]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -181,69 +233,101 @@ export default function HolderView({ app, onBack }: HolderViewProps) {
 
   return (
     <div className={styles.step}>
-      <h3>
-        <button onClick={onBack} className={styles.back}>
+      <div style={{ width: '100%', display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
+        <button onClick={onBack} className={styles.back} style={{ marginRight: '16px', padding: 0 }}>
           ←
-        </button>{' '}
-        Citizen Wallet
-      </h3>
+        </button>
+        <h3 style={{ margin: 0, color: '#fff' }}>Get Verified</h3>
+      </div>
 
       {!myPod ? (
         <div>
-          <p>Import Digital Identity</p>
           <div className={styles.card}>
+            <h4 style={{ color: '#fff', marginBottom: '20px' }}>Import Identity</h4>
+
             {!isScanning ? (
               <button
                 onClick={() => setIsScanning(true)}
                 className={styles.button}
+                style={{ marginBottom: '20px', height: '60px', fontSize: '1.2rem' }}
               >
-                📷 Scan QR Code
+                Scan QR Code
               </button>
             ) : (
-              <div id="reader" style={{ width: '100%' }}></div>
+              <div style={{ marginBottom: '20px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #333' }}>
+                <div id="reader" style={{ width: '100%' }}></div>
+                <button
+                  onClick={() => setIsScanning(false)}
+                  className={styles.buttonSecondary}
+                >
+                  Cancel
+                </button>
+              </div>
             )}
-          </div>
-          {isScanning && (
-            <button
-              onClick={() => setIsScanning(false)}
-              className={styles.button}
-              style={{ background: '#888' }}
-            >
-              Cancel Scan
-            </button>
-          )}
 
-          <p style={{ fontSize: '0.9em', marginTop: '20px' }}>
-            Or upload backup:
-          </p>
-          <input
-            type="file"
-            accept=".pod,.json"
-            onChange={handleFileUpload}
-            className={styles.input}
-          />
+            <div style={{ position: 'relative', height: '20px', margin: '20px 0' }}>
+              <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: 'rgba(255,255,255,0.1)' }}></div>
+              <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#050505', padding: '0 10px', color: '#666', fontSize: '0.8rem' }}>OR UPLOAD</span>
+            </div>
+
+            <div style={{
+              border: '1px dashed rgba(255,255,255,0.2)',
+              borderRadius: '12px',
+              padding: '20px',
+              textAlign: 'center',
+              transition: 'border-color 0.2s',
+              cursor: 'pointer'
+            }}>
+              <input
+                type="file"
+                accept=".pod,.json"
+                onChange={handleFileUpload}
+                style={{
+                  opacity: 0,
+                  position: 'absolute',
+                  width: '100%',
+                  height: '100%',
+                  left: 0,
+                  top: 0
+                }}
+              />
+              <span style={{ color: '#aaa' }}>Select .pod or .json file</span>
+            </div>
+          </div>
         </div>
       ) : (
         <div>
-          <div className={styles.card} style={{ background: '#e3f2fd' }}>
-            <h4>My Digital ID</h4>
-            {myPhoto && (
-              <img src={String(myPhoto)} alt="My ID Photo" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', margin: '0 auto 10px', border: '2px solid #ccc', display: 'block' }} />
-            )}
-            <p>
-              ID Loaded: <strong>{myPod ? 'Ready' : 'Empty'}</strong>
-            </p>
-          </div>
-
           {step === 1 && (
             <div className={styles.card}>
-              <p>Join a Verifier Session to present ID</p>
+              <h4 style={{ color: '#fff' }}>Join Session</h4>
+              <p style={{ fontSize: '0.9rem', color: '#888', marginBottom: '20px' }}>
+                Scan a verifier's QR code or enter a session code to connect.
+              </p>
+
+              {!isScanning ? (
+                <button onClick={() => setIsScanning(true)} className={styles.button} style={{ marginBottom: '16px' }}>
+                  📷 Scan Verifier QR
+                </button>
+              ) : (
+                <div style={{ marginBottom: '16px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #333' }}>
+                  <div id="connection-reader" style={{ width: '100%' }}></div>
+                  <button onClick={() => setIsScanning(false)} className={styles.buttonSecondary}>Cancel Scan</button>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+                <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }}></div>
+                <span style={{ color: '#666', fontSize: '0.8rem', textTransform: 'uppercase' }}>OR</span>
+                <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }}></div>
+              </div>
+
               <input
                 type="text"
                 value={joiningCode}
-                placeholder="Enter Session Code from Verifier"
+                placeholder="Enter Session Code"
                 onChange={e => app.joiningCode.set(e.target.value)}
                 className={styles.input}
+                style={{ marginTop: '20px' }}
               />
               <button
                 onClick={async () => {
@@ -260,109 +344,121 @@ export default function HolderView({ app, onBack }: HolderViewProps) {
                     setSpinner(false);
                   }
                 }}
-                className={styles.button}
+                className={styles.buttonSecondary}
                 disabled={!joiningCode}
               >
-                {spinner ? 'Connecting...' : 'Connect'}
+                {spinner ? 'Connecting...' : 'Connect Manually'}
               </button>
             </div>
           )}
 
-          {step === 2 && <div>Connecting...</div>}
+          {step === 2 && (
+            <div className={styles.card} style={{ alignItems: 'center', justifyContent: 'center', minHeight: '200px' }}>
+              <div className={styles.spinner}></div>
+              <p style={{ marginTop: '20px', color: '#888' }}>Establishing secure channel...</p>
+            </div>
+          )}
 
           {step === 3 && (
-            <div>
-              <p style={{ color: 'green' }}>Connected to Verifier!</p>
+            <div className={styles.card} style={{ borderColor: 'rgba(74, 222, 128, 0.4)' }}>
+              <div style={{
+                background: 'rgba(74, 222, 128, 0.1)',
+                padding: '16px',
+                borderRadius: '12px',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ fontSize: '1.5em' }}>🔒</span>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontWeight: 'bold', color: '#fff' }}>Secure Channel Active</div>
+                  <div style={{ fontSize: '0.8rem', color: '#4ade80' }}>Connected to Verifier</div>
+                </div>
+              </div>
 
               {pendingRequest.length > 0 ? (
-                <div className={styles.card} style={{ borderColor: '#ff9800' }}>
-                  <p>
-                    <strong>Verifier Request:</strong>
+                <div style={{ animation: 'fadeIn 0.3s' }}>
+                  <h4 style={{ color: '#fbbf24', marginBottom: '10px' }}>Data Request</h4>
+                  <p style={{ fontSize: '0.9rem', color: '#aaa', marginBottom: '16px' }}>
+                    The verifier is requesting:
                   </p>
-                  <ul style={{ textAlign: 'left' }}>
-                    {pendingRequest.map(f => (
-                      <li key={f}>{f}</li>
-                    ))}
-                  </ul>
-                  <p>Do you want to disclose these attributes?</p>
-                  <button onClick={sendID} className={styles.button}>
-                    Approve & Share
-                  </button>
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '16px', borderRadius: '12px', margin: '16px 0' }}>
+                    <ul style={{ textAlign: 'left', paddingLeft: '20px', margin: 0, color: '#fff' }}>
+                      {pendingRequest.map(f => (
+                        <li key={f} style={{ marginBottom: '4px' }}>{f.toUpperCase()}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
+                    <button onClick={() => setPendingRequest([])} className={styles.buttonSecondary}>Deny</button>
+                    <button onClick={sendID} className={styles.button}>Approve & Share</button>
+                  </div>
                 </div>
-              ) : (
-                <div>
-                  {mpcRequest ? (
-                    <div
-                      className={styles.card}
-                      style={{ borderColor: '#9c27b0' }}
-                    >
-                      <h4 style={{ color: '#9c27b0' }}>🔒 Private ZK Check</h4>
-                      {mpcRequest.minAge && (
-                        <p>
-                          Verifier wants to check if{' '}
-                          <strong>Age &ge; {mpcRequest.minAge}</strong>
-                        </p>
-                      )}
-                      {mpcRequest.checkName && (
-                        <p>
-                          Verifier wants to check if{' '}
-                          <strong>Name == [Hidden Target Name]</strong>
-                        </p>
-                      )}
-
-                      <p style={{ fontSize: '0.9em' }}>
-                        Using Zero-Knowledge Proof (MPC). <br />
-                        They will <strong>NOT</strong> see your actual data.
+              ) : mpcRequest ? (
+                <div style={{ animation: 'fadeIn 0.3s' }}>
+                  <h4 style={{ color: '#a78bfa', marginBottom: '10px' }}>Private ZK Check</h4>
+                  <div style={{ background: 'rgba(167, 139, 250, 0.1)', padding: '16px', borderRadius: '12px', marginBottom: '16px' }}>
+                    {mpcRequest.minAge && (
+                      <p style={{ margin: '4px 0', color: '#fff' }}>
+                        Check: <strong>Age &ge; {mpcRequest.minAge}</strong>
                       </p>
-
-                      {mpcProgress > 0 && mpcProgress < 1 ? (
-                        <div style={{ margin: '10px 0' }}>
-                          <div
-                            style={{
-                              height: '5px',
-                              background: '#eee',
-                              width: '100%',
-                            }}
-                          >
-                            <div
-                              style={{
-                                height: '100%',
-                                background: '#9c27b0',
-                                width: `${mpcProgress * 100}%`,
-                                transition: 'width 0.2s',
-                              }}
-                            ></div>
-                          </div>
-                          <p style={{ fontSize: '0.8em' }}>
-                            Computing... {(mpcProgress * 100).toFixed(0)}%
-                          </p>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={startZKAgeCheck}
-                          className={styles.button}
-                          style={{ background: '#9c27b0' }}
-                        >
-                          Run Private Check
-                        </button>
-                      )}
+                    )}
+                    {mpcRequest.checkName && (
+                      <p style={{ margin: '4px 0', color: '#fff' }}>
+                        Check: <strong>Name Match</strong>
+                      </p>
+                    )}
+                  </div>
+                  <p style={{ fontSize: '0.8em', color: '#aaa', marginTop: 0, marginBottom: '20px' }}>
+                    Using Zero-Knowledge Proof (MPC). <br />
+                    They will <strong>NOT</strong> see your actual data.
+                  </p>
+                  {mpcProgress > 0 && mpcProgress < 1 ? (
+                    <div style={{ margin: '20px 0' }}>
+                      <div
+                        style={{
+                          height: '6px',
+                          background: 'rgba(255,255,255,0.1)',
+                          width: '100%',
+                          borderRadius: '3px',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: '100%',
+                            background: '#a78bfa',
+                            width: `${mpcProgress * 100}%`,
+                            transition: 'width 0.2s',
+                          }}
+                        ></div>
+                      </div>
+                      <p style={{ fontSize: '0.8rem', color: '#aaa', marginTop: '8px', textAlign: 'right' }}>
+                        Computing... {(mpcProgress * 100).toFixed(0)}%
+                      </p>
                     </div>
                   ) : (
-                    <>
-                      <p>Waiting for request...</p>
-                      <button
-                        onClick={sendID}
-                        className={styles.button}
-                        style={{ opacity: 0.5 }}
-                      >
-                        Force Share All
-                      </button>
-                    </>
+                    <button
+                      onClick={startZKAgeCheck}
+                      className={styles.button}
+                      style={{ background: 'rgba(167, 139, 250, 0.2)', borderColor: '#a78bfa', color: '#fff' }}
+                    >
+                      Run Private Check
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '20px 0', color: '#888' }}>
+                  {holderStatus === 'ZK Proof Completed. Verifier has received the result.' ? (
+                    <p style={{ color: '#4ade80', fontWeight: 'bold' }}>
+                      ZK Proof Completed.<br />Verifier has received the result.
+                    </p>
+                  ) : (
+                    <div style={{ opacity: 0.6 }}>Waiting for request...</div>
                   )}
                 </div>
               )}
-
-              <p>{holderStatus}</p>
             </div>
           )}
         </div>

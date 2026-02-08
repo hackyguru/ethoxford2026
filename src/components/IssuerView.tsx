@@ -66,107 +66,138 @@ export default function IssuerView({ onBack }: IssuerViewProps) {
 
   return (
     <div className={styles.step}>
-      <h3>
-        <button onClick={onBack} className={styles.back}>
+      <div style={{ width: '100%', display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
+        <button onClick={onBack} className={styles.back} style={{ marginRight: '16px', padding: 0 }}>
           ←
-        </button>{' '}
-        Issuer Portal
-      </h3>
-
-      <div className={styles.card} style={{ background: '#e3f2fd', marginBottom: '15px' }}>
-        <p style={{ margin: '0', fontSize: '0.9em' }}><strong>My Public Key (For Verifiers):</strong></p>
-        <code style={{ display: 'block', wordBreak: 'break-all', fontSize: '0.7em', marginTop: '5px' }}>{issuerPk}</code>
-        <button
-          onClick={() => navigator.clipboard.writeText(issuerPk)}
-          style={{ marginTop: '5px', fontSize: '0.7em', padding: '2px 5px' }}
-        >
-          Copy Key
         </button>
+        <h3 style={{ margin: 0, color: '#fff' }}>Issuer Portal</h3>
       </div>
 
-      <div className={styles.form}>
-        <label>
-          Name:{' '}
-          <input
-            value={issueData.name}
-            onChange={e => setIssueData({ ...issueData, name: e.target.value })}
-            className={styles.input}
-          />
-        </label>
-        <label>
-          Age:{' '}
-          <input
-            type="number"
-            value={issueData.age}
-            onChange={e =>
-              setIssueData({ ...issueData, age: Number(e.target.value) })
-            }
-            className={styles.input}
-          />
-        </label>
-        <label>
-          Residency:{' '}
-          <input
-            value={issueData.residency}
-            onChange={e =>
-              setIssueData({ ...issueData, residency: e.target.value })
-            }
-            className={styles.input}
-          />
-        </label>
-        <label>
-          Photo ID:
-          <input
-            type="file"
-            accept="image/*"
-            onChange={e => {
-              const file = e.target.files?.[0];
-              if (file) {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                  setIssueData({ ...issueData, photo: reader.result as string });
-                };
-                reader.readAsDataURL(file);
-              }
+      <div className={styles.card} style={{ marginBottom: '24px' }}>
+        <h4 style={{ color: '#fff' }}>Issuer Key</h4>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px' }}>
+          <code style={{ flex: 1, wordBreak: 'break-all', fontSize: '0.7em', color: '#aaa' }}>{issuerPk}</code>
+          <button
+            onClick={() => navigator.clipboard.writeText(issuerPk)}
+            style={{
+              background: 'none',
+              border: '1px solid #555',
+              color: '#fff',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              fontSize: '0.7em',
+              cursor: 'pointer'
             }}
-            style={{ marginTop: '10px' }}
-          />
-        </label>
-        {issueData.photo && (
-          <img src={issueData.photo} alt="ID Photo" style={{ width: '100px', height: '100px', objectFit: 'cover', borderRadius: '50%', display: 'block', margin: '10px auto', border: '2px solid #333' }} />
-        )}
+          >
+            COPY
+          </button>
+        </div>
+        <p style={{ margin: '8px 0 0 0', fontSize: '0.8em', color: '#666' }}>Trusted public key for verifiers</p>
+      </div>
 
-        <button onClick={mintID} className={styles.button}>
-          Mint Digital ID
-        </button>
+      <div className={styles.card}>
+        <h4>Issue New Identity</h4>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label className={styles.label}>Name</label>
+            <input
+              value={issueData.name}
+              onChange={e => setIssueData({ ...issueData, name: e.target.value })}
+              className={styles.input}
+              placeholder="Alice Doe"
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '16px' }}>
+            <div style={{ flex: 1 }}>
+              <label className={styles.label}>Age</label>
+              <input
+                type="number"
+                value={issueData.age}
+                onChange={e =>
+                  setIssueData({ ...issueData, age: Number(e.target.value) })
+                }
+                className={styles.input}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className={styles.label}>Residency</label>
+              <input
+                value={issueData.residency}
+                onChange={e =>
+                  setIssueData({ ...issueData, residency: e.target.value })
+                }
+                className={styles.input}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className={styles.label}>Photo ID</label>
+            <div style={{
+              border: '1px dashed rgba(255,255,255,0.2)',
+              borderRadius: '12px',
+              padding: '16px',
+              textAlign: 'center',
+              cursor: 'pointer',
+              position: 'relative'
+            }}>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      setIssueData({ ...issueData, photo: reader.result as string });
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  opacity: 0,
+                  cursor: 'pointer'
+                }}
+              />
+              {issueData.photo ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <img src={issueData.photo} alt="ID" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }} />
+                  <span style={{ fontSize: '0.9em' }}>Photo Selected</span>
+                </div>
+              ) : (
+                <span style={{ color: '#888', fontSize: '0.9em' }}>Click to upload photo</span>
+              )}
+            </div>
+          </div>
+
+          <button onClick={mintID} className={styles.button} style={{ marginTop: '8px' }}>
+            Mint Digital ID
+          </button>
+        </div>
       </div>
 
       {mintedPod && (
-        <div className={styles.result}>
-          <p>ID Minted.</p>
+        <div className={styles.card} style={{ borderColor: 'rgba(74, 222, 128, 0.4)' }}>
+          <h4 style={{ color: '#4ade80' }}>Success</h4>
+          <p style={{ fontSize: '0.9em', color: '#ccc' }}>Digital Identity created successfully.</p>
           <div
             style={{
               background: 'white',
-              padding: '10px',
-              display: 'inline-block',
-              marginBottom: '10px',
+              padding: '16px',
+              margin: '16px auto',
+              borderRadius: '12px',
+              maxWidth: '220px'
             }}
           >
-            <QRCodeSVG value={mintedPod} size={256} />
+            <QRCodeSVG value={mintedPod} size={200} style={{ width: '100%', height: 'auto' }} />
           </div>
-          <div
-            style={{
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              fontSize: '0.8em',
-              background: '#eee',
-              padding: '5px',
-              fontFamily: 'monospace',
-            }}
-          >
-            {mintedPod.substring(0, 50)}...
-          </div>
-          <button onClick={downloadPodFile} className={styles.button}>
+          <button onClick={downloadPodFile} className={styles.buttonSecondary}>
             Download .pod File
           </button>
         </div>
